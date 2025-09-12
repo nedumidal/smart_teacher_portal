@@ -1,0 +1,72 @@
+# General
+logs/
+*.log
+*.log.*
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Node
+node_modules/
+.npm/
+.yarn/
+
+# Coverage
+coverage/
+*.lcov
+
+# Build output / caches
+dist/
+build/
+.cache/
+.parcel-cache/
+.next/
+.nuxt/
+out/
+.tmp/
+tmp/
+temp/
+
+# TypeScript
+*.tsbuildinfo
+
+# Linters
+.eslintcache
+
+# Environment files (keep examples)
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+Desktop.ini
+
+# Editors/IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Tooling/hosting
+.vercel/
+.netlify/
+
+# Backend-specific
+backend/node_modules/
+backend/coverage/
+backend/logs/
+backend/.env
+
+# Frontend-specific
+frontend/node_modules/
+frontend/build/
+frontend/dist/
+frontend/.cache/
+frontend/.env
+

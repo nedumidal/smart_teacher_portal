@@ -1,0 +1,29 @@
+{
+  "name": "teacher-leave-management-system",
+  "version": "1.0.0",
+  "description": "A comprehensive teacher leave management and substitution recommendation system",
+  "main": "index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "server": "cd backend && npm run dev",
+    "client": "cd frontend && npm start",
+    "install-all": "npm install && cd backend && npm install && cd ../frontend && npm install",
+    "build": "cd frontend && npm run build",
+    "start": "cd backend && npm start",
+    "setup": "node setup.js",
+    "seed": "cd backend && node seed.js"
+  },
+  "keywords": [
+    "teacher",
+    "leave",
+    "management",
+    "substitution",
+    "recommendation",
+    "education"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
