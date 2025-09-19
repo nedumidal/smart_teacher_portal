@@ -14,6 +14,8 @@ const ManageSubstitutions = () => {
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingSubstitution, setEditingSubstitution] = useState(null);
   const [teacherDayPeriods, setTeacherDayPeriods] = useState([]);
+  const [selectedTeachers, setSelectedTeachers] = useState([]);
+  const [isClassNameAutoFilled, setIsClassNameAutoFilled] = useState(false);
 
   const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const periods = [1, 2, 3, 4, 5, 6, 7];
@@ -66,11 +68,13 @@ const ManageSubstitutions = () => {
             const chosen = match || dayPeriods[0];
             setSelectedPeriod(chosen.periodNumber);
             
-            // Get class name from the assigned period
+            // Auto-populate class name from the assigned period
+            let classNameToSet = '';
+            
             if (chosen.classId && chosen.classId.name) {
-              setClassName(chosen.classId.name);
+              classNameToSet = chosen.classId.name;
             } else if (chosen.className) {
-              setClassName(chosen.className);
+              classNameToSet = chosen.className;
             } else {
               // Fallback: find class by scanning classes timetable
               try {
@@ -78,7 +82,6 @@ const ManageSubstitutions = () => {
                   headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
                 });
                 const classes = (classesRes.data && classesRes.data.data) || [];
-                let foundName = '';
                 
                 // Try to find class by teacher and period
                 for (const c of classes) {
@@ -90,34 +93,39 @@ const ManageSubstitutions = () => {
                     (per.teacherId === selectedLeave.teacherId || (per.teacherId && per.teacherId._id === selectedLeave.teacherId))
                   );
                   if (hit) {
-                    foundName = c.name;
+                    classNameToSet = c.name;
                     break;
                   }
                 }
                 
                 // If still not found, try to find by subject match
-                if (!foundName) {
+                if (!classNameToSet) {
                   for (const c of classes) {
                     if (!Array.isArray(c.timetable)) continue;
                     const dayEntry = c.timetable.find(d => d.day === normalizedDay);
                     if (!dayEntry || !Array.isArray(dayEntry.periods)) continue;
                     const hit = dayEntry.periods.find(per => 
                       per.periodNumber === chosen.periodNumber && 
-                      per.subject && chosen.subject &&
-                      per.subject.toLowerCase().includes(chosen.subject.toLowerCase())
+                      per.subject && selectedLeave.subject &&
+                      per.subject.toLowerCase().includes(selectedLeave.subject.toLowerCase())
                     );
                     if (hit) {
-                      foundName = c.name;
+                      classNameToSet = c.name;
                       break;
                     }
                   }
                 }
-                
-                setClassName(foundName);
               } catch (e) {
                 console.error('Error resolving class name from classes list:', e);
-                setClassName('');
               }
+            }
+            
+            setClassName(classNameToSet);
+            setIsClassNameAutoFilled(!!classNameToSet);
+            
+            // Show success message if class was auto-populated
+            if (classNameToSet) {
+              console.log(`Auto-populated class name: ${classNameToSet} for teacher ${selectedLeave.teacherName} on ${normalizedDay} period ${chosen.periodNumber}`);
             }
           } else {
             // No periods on that day; clear fields so user can choose
@@ -206,9 +214,14 @@ const ManageSubstitutions = () => {
     }
   };
 
-  const assignSubstitution = async (substituteTeacherId) => {
+  const assignSubstitution = async (substituteTeacherIds) => {
     if (!selectedLeave || !className.trim()) {
       alert('Please select a leave request and enter a class name');
+      return;
+    }
+
+    if (!substituteTeacherIds || substituteTeacherIds.length === 0) {
+      alert('Please select at least one teacher for substitution');
       return;
     }
 
@@ -226,10 +239,10 @@ const ManageSubstitutions = () => {
         return;
       }
 
-      console.log('Assigning substitution with data:', {
+      console.log('Assigning substitution to multiple teachers:', {
         leaveId: selectedLeave._id,
         originalTeacherId: selectedLeave.teacherId,
-        substituteTeacherId,
+        substituteTeacherIds,
         day: selectedDay,
         periodNumber: selectedPeriod,
         subject: selectedLeave.subject || 'General',
@@ -239,10 +252,10 @@ const ManageSubstitutions = () => {
         notes: `Substitution request for ${selectedLeave.teacherName} on ${new Date(selectedLeave.date).toLocaleDateString()}`
       });
 
-      const response = await axios.post('/api/timetable/assign-substitution', {
+      const response = await axios.post('/api/timetable/assign-substitution-multi', {
         leaveId: selectedLeave._id,
         originalTeacherId: selectedLeave.teacherId,
-        substituteTeacherId,
+        substituteTeacherIds,
         day: selectedDay,
         periodNumber: selectedPeriod,
         subject: selectedLeave.subject || 'General',
@@ -254,7 +267,7 @@ const ManageSubstitutions = () => {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
 
-      console.log('Substitution assignment response:', response.data);
+      console.log('Multi-teacher substitution assignment response:', response.data);
 
       if (response.data && response.data.success) {
         // Refresh data
@@ -263,10 +276,12 @@ const ManageSubstitutions = () => {
         setSelectedLeave(null);
         setRecommendations([]);
         setClassName('');
+        setSelectedTeachers([]);
+        setIsClassNameAutoFilled(false);
         setShowAddForm(false);
         
         // Show success message
-        alert('Substitution request sent successfully!');
+        alert(`Substitution requests sent to ${response.data.data.length} teachers successfully!`);
       }
     } catch (error) {
       console.error('Error assigning substitution:', error);
@@ -319,9 +334,10 @@ const ManageSubstitutions = () => {
 
   const getStatusBadge = (status) => {
     const statusConfig = {
-      'assigned': { color: 'bg-yellow-100 text-yellow-800', icon: FaClock },
+      'requested': { color: 'bg-yellow-100 text-yellow-800', icon: FaClock },
       'accepted': { color: 'bg-green-100 text-green-800', icon: FaCheckCircle },
       'rejected': { color: 'bg-red-100 text-red-800', icon: FaTimesCircle },
+      'expired': { color: 'bg-gray-100 text-gray-800', icon: FaTimesCircle },
       'completed': { color: 'bg-blue-100 text-blue-800', icon: FaExchangeAlt }
     };
 
@@ -344,6 +360,8 @@ const ManageSubstitutions = () => {
     setSelectedPeriod(1);
     setShowAddForm(false);
     setEditingSubstitution(null);
+    setSelectedTeachers([]);
+    setIsClassNameAutoFilled(false);
   };
 
   return (
@@ -425,15 +443,34 @@ const ManageSubstitutions = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">Class Name *</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Class Name *
+                {isClassNameAutoFilled && (
+                  <span className="ml-2 text-xs text-green-600 font-normal">
+                    (Auto-filled from teacher's timetable)
+                  </span>
+                )}
+              </label>
               <input
                 type="text"
                 value={className}
-                onChange={(e) => setClassName(e.target.value)}
+                onChange={(e) => {
+                  setClassName(e.target.value);
+                  setIsClassNameAutoFilled(false); // Reset auto-fill flag when manually edited
+                }}
                 placeholder="e.g., Class 10A"
-                className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                className={`w-full p-2 border rounded-md focus:ring-blue-500 focus:border-blue-500 ${
+                  isClassNameAutoFilled 
+                    ? 'border-green-300 bg-green-50' 
+                    : 'border-gray-300'
+                }`}
                 required
               />
+              {isClassNameAutoFilled && (
+                <p className="text-xs text-green-600 mt-1">
+                  ✓ Class automatically detected from {selectedLeave.teacherName}'s schedule
+                </p>
+              )}
             </div>
 
             <div className="flex items-end">
@@ -450,14 +487,36 @@ const ManageSubstitutions = () => {
 
           {recommendations.length > 0 && (
             <div className="mt-4">
-              <h5 className="font-medium text-gray-700 mb-3">Available Teachers</h5>
+              <h5 className="font-medium text-gray-700 mb-3">Available Teachers (Select 3-4 teachers)</h5>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {recommendations.map((rec, index) => (
-                  <div key={rec.teacherId} className="p-4 border border-gray-200 rounded-lg bg-gray-50">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="font-medium text-gray-900">{rec.teacherName}</p>
-                        <p className="text-sm text-gray-600">{rec.subject} • {rec.department}</p>
+                  <div key={rec.teacherId} className={`p-4 border rounded-lg cursor-pointer transition-colors ${
+                    selectedTeachers.includes(rec.teacherId) 
+                      ? 'border-blue-500 bg-blue-50' 
+                      : 'border-gray-200 bg-gray-50 hover:border-gray-300'
+                  }`}>
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedTeachers.includes(rec.teacherId)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              if (selectedTeachers.length < 4) {
+                                setSelectedTeachers([...selectedTeachers, rec.teacherId]);
+                              } else {
+                                alert('Maximum 4 teachers can be selected');
+                              }
+                            } else {
+                              setSelectedTeachers(selectedTeachers.filter(id => id !== rec.teacherId));
+                            }
+                          }}
+                          className="mr-3 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                        />
+                        <div>
+                          <p className="font-medium text-gray-900">{rec.teacherName}</p>
+                          <p className="text-sm text-gray-600">{rec.subject} • {rec.department}</p>
+                        </div>
                       </div>
                       <div className="text-right">
                         <p className="text-sm font-medium text-gray-900">
@@ -474,16 +533,36 @@ const ManageSubstitutions = () => {
                         <span className="mr-2">ML: {rec.leaveBalances.medicalLeave}</span>
                         <span>EL: {rec.leaveBalances.earnedLeave}</span>
                       </div>
-                      <button
-                        onClick={() => assignSubstitution(rec.teacherId)}
-                        className="bg-green-600 text-white px-3 py-1 rounded text-sm hover:bg-green-700"
-                      >
-                        Assign
-                      </button>
+                      <div className="text-xs text-gray-500">
+                        {selectedTeachers.includes(rec.teacherId) ? 'Selected' : 'Click to select'}
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
+              
+              {selectedTeachers.length > 0 && (
+                <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium text-blue-900">
+                        {selectedTeachers.length} teacher(s) selected
+                      </p>
+                      <p className="text-sm text-blue-700">
+                        Substitution requests will be sent to all selected teachers. 
+                        The first teacher to accept will get the assignment, others will be automatically cancelled.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => assignSubstitution(selectedTeachers)}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 flex items-center"
+                    >
+                      <FaExchangeAlt className="mr-2" />
+                      Send to {selectedTeachers.length} Teachers
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

@@ -299,18 +299,6 @@ const TimetableGenerator = () => {
         </div>
       </div>
 
-      {/* Instructions */}
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-        <h3 className="text-sm font-medium text-blue-800 mb-2">How to use:</h3>
-        <ol className="text-sm text-blue-700 space-y-1">
-          <li>1. Fill in the class details (Department, Section, Semester, Graduation Year)</li>
-          <li>2. Subjects will auto-populate based on the selected department</li>
-          <li>3. Click "Generate Timetable" to create a random timetable</li>
-          <li>4. Click any cell to edit subject, teacher, or room</li>
-          <li>5. Use "Regenerate" to create a new random distribution</li>
-          <li>6. Click "Save Timetable" to save to the database</li>
-        </ol>
-      </div>
 
       {/* Class Details Form */}
       <div className="bg-white rounded-lg shadow-md">

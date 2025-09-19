@@ -42,7 +42,7 @@ const substitutionSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['requested', 'accepted', 'rejected', 'completed', 'cancelled'],
+    enum: ['requested', 'accepted', 'rejected', 'completed', 'cancelled', 'expired'],
     default: 'requested'
   },
   assignedBy: {
@@ -72,6 +72,14 @@ const substitutionSchema = new mongoose.Schema({
   completedAt: {
     type: Date
   },
+  expiredAt: {
+    type: Date
+  },
+  expiredReason: {
+    type: String,
+    trim: true,
+    maxlength: [500, 'Expired reason cannot exceed 500 characters']
+  },
   notes: {
     type: String,
     trim: true,
@@ -80,6 +88,11 @@ const substitutionSchema = new mongoose.Schema({
   isActive: {
     type: Boolean,
     default: true
+  },
+  substitutionGroupId: {
+    type: mongoose.Schema.Types.ObjectId,
+    required: false,
+    index: true
   }
 }, {
   timestamps: true

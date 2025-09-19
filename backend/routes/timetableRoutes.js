@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { protect } = require('../middleware/auth');
 const Timetable = require('../models/Timetable');
 const Substitution = require('../models/Substitution');
@@ -208,8 +209,8 @@ router.get('/substitution-recommendations', protect, async (req, res) => {
   }
 });
 
-// Assign substitution (request)
-router.post('/assign-substitution', protect, async (req, res) => {
+// Assign substitution to multiple teachers (request)
+router.post('/assign-substitution-multi', protect, async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
       return res.status(403).json({
@@ -221,7 +222,7 @@ router.post('/assign-substitution', protect, async (req, res) => {
     const {
       leaveId,
       originalTeacherId,
-      substituteTeacherId,
+      substituteTeacherIds, // Array of teacher IDs
       day,
       periodNumber,
       subject,
@@ -231,10 +232,10 @@ router.post('/assign-substitution', protect, async (req, res) => {
       notes
     } = req.body;
 
-    console.log('Assigning substitution with data:', {
+    console.log('Assigning substitution to multiple teachers:', {
       leaveId,
       originalTeacherId,
-      substituteTeacherId,
+      substituteTeacherIds,
       day,
       periodNumber,
       subject,
@@ -244,10 +245,18 @@ router.post('/assign-substitution', protect, async (req, res) => {
     });
 
     // Validate required fields
-    if (!leaveId || !originalTeacherId || !substituteTeacherId || !day || !periodNumber || !subject || !className || !date) {
+    if (!leaveId || !originalTeacherId || !substituteTeacherIds || !Array.isArray(substituteTeacherIds) || substituteTeacherIds.length === 0 || !day || !periodNumber || !subject || !className || !date) {
       return res.status(400).json({
         success: false,
-        message: 'All fields are required'
+        message: 'All fields are required including substituteTeacherIds array'
+      });
+    }
+
+    // Limit to maximum 4 teachers
+    if (substituteTeacherIds.length > 4) {
+      return res.status(400).json({
+        success: false,
+        message: 'Maximum 4 substitute teachers allowed'
       });
     }
 
@@ -264,22 +273,7 @@ router.post('/assign-substitution', protect, async (req, res) => {
       resolvedClassId = classDoc._id;
     }
 
-    // Check if substitute teacher is available
-    const availability = await substitutionRecommender.calculateAvailabilityScore(
-      substituteTeacherId,
-      day,
-      periodNumber,
-      new Date(date)
-    );
-
-    if (availability === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Substitute teacher is not available at this time'
-      });
-    }
-
-    // Check if substitution already exists for this leave
+    // Check if any substitution already exists for this leave
     const existingSubstitution = await Substitution.findOne({
       leaveId,
       isActive: true
@@ -292,46 +286,60 @@ router.post('/assign-substitution', protect, async (req, res) => {
       });
     }
 
-    // Create substitution record with 'requested' status
-    const substitution = new Substitution({
-      leaveId,
-      originalTeacherId,
-      substituteTeacherId,
-      day,
-      periodNumber,
-      subject,
-      classId: resolvedClassId,
-      className,
-      assignedBy: req.user._id,
-      status: 'requested',
-      notes: notes || ''
-    });
+    // Create substitution records for each teacher
+    const substitutions = [];
+    const substitutionGroupId = new mongoose.Types.ObjectId(); // Group ID to link related substitutions
 
-    console.log('Created substitution object:', substitution);
+    for (const substituteTeacherId of substituteTeacherIds) {
+      // Check if substitute teacher is available
+      const availability = await substitutionRecommender.calculateAvailabilityScore(
+        substituteTeacherId,
+        day,
+        periodNumber,
+        new Date(date)
+      );
 
-    await substitution.save();
+      if (availability === 0) {
+        console.log(`Teacher ${substituteTeacherId} is not available, skipping...`);
+        continue; // Skip unavailable teachers
+      }
 
-    console.log('Substitution saved successfully:', substitution._id);
-    console.log('Substitution details:', {
-      id: substitution._id,
-      substituteTeacherId: substitution.substituteTeacherId,
-      originalTeacherId: substitution.originalTeacherId,
-      status: substitution.status,
-      className: substitution.className
-    });
+      // Create substitution record with 'requested' status
+      const substitution = new Substitution({
+        leaveId,
+        originalTeacherId,
+        substituteTeacherId,
+        day,
+        periodNumber,
+        subject,
+        classId: resolvedClassId,
+        className,
+        assignedBy: req.user._id,
+        status: 'requested',
+        notes: notes || '',
+        substitutionGroupId, // Link all substitutions in the same group
+        isActive: true
+      });
 
-    // Update the leave with the substitution reference
-    const Leave = require('../models/Leave');
-    await Leave.findByIdAndUpdate(leaveId, {
-      finalSubstitute: substituteTeacherId
-    });
+      await substitution.save();
+      substitutions.push(substitution);
 
-    console.log('Leave updated with final substitute');
+      console.log(`Substitution request created for teacher ${substituteTeacherId}:`, substitution._id);
+    }
+
+    if (substitutions.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No available teachers found for substitution'
+      });
+    }
+
+    console.log(`Created ${substitutions.length} substitution requests for leave ${leaveId}`);
 
     res.json({
       success: true,
-      data: substitution,
-      message: 'Substitution request sent to teacher'
+      data: substitutions,
+      message: `Substitution requests sent to ${substitutions.length} teachers`
     });
 
     // Notify dashboards to refresh
@@ -401,6 +409,24 @@ router.patch('/substitutions/:substitutionId/accept', protect, async (req, res) 
     substitution.status = 'accepted';
     substitution.acceptedAt = new Date();
     await substitution.save();
+
+    // If this substitution is part of a group, expire all other requests in the same group
+    if (substitution.substitutionGroupId) {
+      await Substitution.updateMany(
+        {
+          substitutionGroupId: substitution.substitutionGroupId,
+          _id: { $ne: substitution._id }, // Exclude the current substitution
+          status: 'requested'
+        },
+        {
+          status: 'expired',
+          expiredAt: new Date(),
+          expiredReason: 'Another teacher in the group accepted the substitution'
+        }
+      );
+      
+      console.log(`Expired other substitution requests in group ${substitution.substitutionGroupId}`);
+    }
 
     // Update teacher's assigned periods to include the substitution
     await Teacher.findByIdAndUpdate(
