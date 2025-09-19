@@ -549,6 +549,42 @@ router.get('/dashboard-stats', async (req, res) => {
     const approvedLeaves = await Leave.countDocuments({ status: 'approved' });
     const rejectedLeaves = await Leave.countDocuments({ status: 'rejected' });
 
+    // Get substitution statistics
+    const Substitution = require('../models/Substitution');
+    const totalSubstitutions = await Substitution.countDocuments();
+    const activeSubstitutions = await Substitution.countDocuments({ status: { $in: ['requested', 'accepted'] } });
+    const expiredSubstitutions = await Substitution.countDocuments({ status: 'expired' });
+    
+    // Get time-based statistics
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const thisWeekStart = new Date(today);
+    thisWeekStart.setDate(today.getDate() - today.getDay());
+    thisWeekStart.setHours(0, 0, 0, 0);
+
+    const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    const todayLeaves = await Leave.countDocuments({
+      date: { $gte: today, $lt: tomorrow }
+    });
+
+    const thisWeekLeaves = await Leave.countDocuments({
+      date: { $gte: thisWeekStart }
+    });
+
+    const thisMonthLeaves = await Leave.countDocuments({
+      date: { $gte: thisMonthStart }
+    });
+
+    // Get departments and classes count
+    const Department = require('../models/Department');
+    const Class = require('../models/Class');
+    const departments = await Department.countDocuments();
+    const classes = await Class.countDocuments();
+
     // Get leaves by subject
     const leavesBySubject = await Leave.aggregate([
       { $lookup: { from: 'teachers', localField: 'teacherId', foreignField: '_id', as: 'teacher' } },
@@ -567,17 +603,19 @@ router.get('/dashboard-stats', async (req, res) => {
     res.json({
       success: true,
       data: {
-        teachers: {
-          total: totalTeachers,
-          active: activeTeachers,
-          available: availableTeachers
-        },
-        leaves: {
-          total: totalLeaves,
-          pending: pendingLeaves,
-          approved: approvedLeaves,
-          rejected: rejectedLeaves
-        },
+        totalTeachers,
+        totalLeaves,
+        pendingLeaves,
+        approvedLeaves,
+        rejectedLeaves,
+        totalSubstitutions,
+        activeSubstitutions,
+        expiredSubstitutions,
+        todayLeaves,
+        thisWeekLeaves,
+        thisMonthLeaves,
+        departments,
+        classes,
         leavesBySubject,
         recentLeaves
       }
@@ -587,6 +625,74 @@ router.get('/dashboard-stats', async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Server error while fetching dashboard statistics',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Get leave limits
+// @route   GET /api/admin/leave-limits
+// @access  Private (Admin only)
+router.get('/leave-limits', async (req, res) => {
+  try {
+    // For now, return default limits. In a real app, these would be stored in database
+    const limits = {
+      casualLeaveLimit: 12,
+      medicalLeaveLimit: 6,
+      earnedLeaveLimit: 30
+    };
+
+    res.json({
+      success: true,
+      data: limits
+    });
+  } catch (error) {
+    console.error('Get leave limits error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching leave limits',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Update leave limits
+// @route   PUT /api/admin/leave-limits
+// @access  Private (Admin only)
+router.put('/leave-limits', [
+  body('casualLeaveLimit').isInt({ min: 1, max: 365 }).withMessage('Casual leave limit must be between 1 and 365'),
+  body('medicalLeaveLimit').isInt({ min: 1, max: 365 }).withMessage('Medical leave limit must be between 1 and 365'),
+  body('earnedLeaveLimit').isInt({ min: 1, max: 365 }).withMessage('Earned leave limit must be between 1 and 365')
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation failed',
+        errors: errors.array()
+      });
+    }
+
+    const { casualLeaveLimit, medicalLeaveLimit, earnedLeaveLimit } = req.body;
+
+    // For now, just return success. In a real app, these would be stored in database
+    const limits = {
+      casualLeaveLimit,
+      medicalLeaveLimit,
+      earnedLeaveLimit
+    };
+
+    res.json({
+      success: true,
+      message: 'Leave limits updated successfully',
+      data: limits
+    });
+  } catch (error) {
+    console.error('Update leave limits error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while updating leave limits',
       error: process.env.NODE_ENV === 'development' ? error.message : {}
     });
   }

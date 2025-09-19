@@ -17,7 +17,7 @@ router.use(isTeacher);
 router.post('/apply-leave', [
   body('date').isISO8601().withMessage('Please provide a valid date'),
   body('reason').trim().isLength({ min: 10, max: 500 }).withMessage('Reason must be between 10 and 500 characters'),
-  body('leaveType').optional().isIn(['sick', 'personal', 'medical', 'other']).withMessage('Invalid leave type'),
+  body('leaveType').optional().isIn(['casual', 'medical', 'earned', 'sick', 'personal', 'other']).withMessage('Invalid leave type'),
   body('duration').optional().isIn(['half-day', 'full-day', 'multiple-days']).withMessage('Invalid duration'),
   body('endDate').optional().isISO8601().withMessage('Please provide a valid end date')
 ], async (req, res) => {
@@ -402,44 +402,6 @@ router.put('/availability', [
   }
 });
 
-// @desc    Get teacher details
-// @route   GET /api/teachers/:id
-// @access  Private (Teachers only - can get own details)
-router.get('/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    
-    // Teachers can only get their own details
-    if (id !== req.user._id.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'You can only access your own details'
-      });
-    }
-
-    const teacher = await Teacher.findById(id).select('-password');
-    
-    if (!teacher) {
-      return res.status(404).json({
-        success: false,
-        message: 'Teacher not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: teacher
-    });
-  } catch (error) {
-    console.error('Get teacher details error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Server error while fetching teacher details',
-      error: process.env.NODE_ENV === 'development' ? error.message : {}
-    });
-  }
-});
-
 // @desc    Get teacher statistics
 // @route   GET /api/teachers/stats
 // @access  Private (Teachers only)
@@ -479,6 +441,222 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+// @desc    Get teacher dashboard statistics
+// @route   GET /api/teachers/dashboard-stats
+// @access  Private (Teachers only)
+router.get('/dashboard-stats', async (req, res) => {
+  try {
+    const teacherId = req.user._id;
+    const currentYear = new Date().getFullYear();
+    const startOfYear = new Date(currentYear, 0, 1);
+    const endOfYear = new Date(currentYear, 11, 31);
+
+    // Get leave statistics
+    const totalLeaves = await Leave.countDocuments({ teacherId });
+    const pendingLeaves = await Leave.countDocuments({ teacherId, status: 'pending' });
+    const approvedLeaves = await Leave.countDocuments({ teacherId, status: 'approved' });
+    const rejectedLeaves = await Leave.countDocuments({ teacherId, status: 'rejected' });
+
+    // Get time-based statistics
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const thisWeekStart = new Date(today);
+    thisWeekStart.setDate(today.getDate() - today.getDay());
+    thisWeekStart.setHours(0, 0, 0, 0);
+
+    const thisMonthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    const todayLeaves = await Leave.countDocuments({
+      teacherId,
+      date: { $gte: today, $lt: tomorrow }
+    });
+
+    const thisWeekLeaves = await Leave.countDocuments({
+      teacherId,
+      date: { $gte: thisWeekStart }
+    });
+
+    const thisMonthLeaves = await Leave.countDocuments({
+      teacherId,
+      date: { $gte: thisMonthStart }
+    });
+
+    // Get leave balances for current year
+    const casualLeaveUsed = await Leave.countDocuments({
+      teacherId,
+      leaveType: 'casual',
+      status: 'approved',
+      date: { $gte: startOfYear, $lte: endOfYear }
+    });
+
+    const medicalLeaveUsed = await Leave.countDocuments({
+      teacherId,
+      leaveType: 'medical',
+      status: 'approved',
+      date: { $gte: startOfYear, $lte: endOfYear }
+    });
+
+    const earnedLeaveUsed = await Leave.countDocuments({
+      teacherId,
+      leaveType: 'earned',
+      status: 'approved',
+      date: { $gte: startOfYear, $lte: endOfYear }
+    });
+
+    // Get substitution statistics
+    const Substitution = require('../models/Substitution');
+    const substitutionRequests = await Substitution.countDocuments({ substituteTeacherId: teacherId });
+    const acceptedSubstitutions = await Substitution.countDocuments({ 
+      substituteTeacherId: teacherId, 
+      status: 'accepted' 
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalLeaves,
+        pendingLeaves,
+        approvedLeaves,
+        rejectedLeaves,
+        todayLeaves,
+        thisWeekLeaves,
+        thisMonthLeaves,
+        casualLeaveUsed,
+        medicalLeaveUsed,
+        earnedLeaveUsed,
+        casualLeaveLimit: 12,
+        medicalLeaveLimit: 6,
+        earnedLeaveLimit: 30,
+        substitutionRequests,
+        acceptedSubstitutions
+      }
+    });
+  } catch (error) {
+    console.error('Get teacher dashboard stats error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching dashboard statistics',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Get leave limits
+// @route   GET /api/teachers/leave-limits
+// @access  Private (Teachers only)
+router.get('/leave-limits', async (req, res) => {
+  try {
+    // For now, return default limits. In a real app, these would be stored in database
+    const limits = {
+      casualLeaveLimit: 12,
+      medicalLeaveLimit: 6,
+      earnedLeaveLimit: 30
+    };
+
+    res.json({
+      success: true,
+      data: limits
+    });
+  } catch (error) {
+    console.error('Get leave limits error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching leave limits',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Get teacher leave balances
+// @route   GET /api/teachers/leave-balances
+// @access  Private (Teachers only)
+router.get('/leave-balances', async (req, res) => {
+  try {
+    const teacherId = req.user._id;
+    const currentYear = new Date().getFullYear();
+    const startOfYear = new Date(currentYear, 0, 1);
+    const endOfYear = new Date(currentYear, 11, 31);
+
+    const casualLeaveUsed = await Leave.countDocuments({
+      teacherId,
+      leaveType: 'casual',
+      status: 'approved',
+      date: { $gte: startOfYear, $lte: endOfYear }
+    });
+
+    const medicalLeaveUsed = await Leave.countDocuments({
+      teacherId,
+      leaveType: 'medical',
+      status: 'approved',
+      date: { $gte: startOfYear, $lte: endOfYear }
+    });
+
+    const earnedLeaveUsed = await Leave.countDocuments({
+      teacherId,
+      leaveType: 'earned',
+      status: 'approved',
+      date: { $gte: startOfYear, $lte: endOfYear }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        casualLeaveUsed,
+        medicalLeaveUsed,
+        earnedLeaveUsed
+      }
+    });
+  } catch (error) {
+    console.error('Get leave balances error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching leave balances',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
+// @desc    Get teacher details
+// @route   GET /api/teachers/:id
+// @access  Private (Teachers only - can get own details)
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Teachers can only get their own details
+    if (id !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only access your own details'
+      });
+    }
+
+    const teacher = await Teacher.findById(id).select('-password');
+    
+    if (!teacher) {
+      return res.status(404).json({
+        success: false,
+        message: 'Teacher not found'
+      });
+    }
+
+    res.json({
+      success: true,
+      data: teacher
+    });
+  } catch (error) {
+    console.error('Get teacher details error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching teacher details',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
 // @desc    Get teacher timetable
 // @route   GET /api/teachers/:id/timetable
 // @access  Private (Teachers only - can get own timetable)
@@ -494,7 +672,9 @@ router.get('/:id/timetable', async (req, res) => {
       });
     }
 
-    const teacher = await Teacher.findById(id).select('assignedPeriods');
+    const teacher = await Teacher.findById(id)
+      .select('assignedPeriods')
+      .populate('assignedPeriods.classId', 'name');
     
     if (!teacher) {
       return res.status(404).json({
@@ -513,7 +693,7 @@ router.get('/:id/timetable', async (req, res) => {
         .map(period => ({
           periodNumber: period.periodNumber,
           subject: period.subject,
-          className: period.classId?.name || 'Unknown Class',
+          className: (period.classId && period.classId.name) ? period.classId.name : 'Unknown Class',
           room: period.room,
           isSubstitution: period.isSubstitution,
           originalTeacherId: period.originalTeacherId

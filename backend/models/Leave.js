@@ -23,8 +23,8 @@ const leaveSchema = new mongoose.Schema({
   },
   leaveType: {
     type: String,
-    enum: ['sick', 'personal', 'medical', 'other'],
-    default: 'other'
+    enum: ['casual', 'medical', 'earned', 'sick', 'personal', 'other'],
+    default: 'casual'
   },
   duration: {
     type: String,
