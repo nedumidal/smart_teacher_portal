@@ -248,6 +248,13 @@ router.delete('/teachers/:id', async (req, res) => {
     // Soft delete - set isActive to false
     await Teacher.findByIdAndUpdate(req.params.id, { isActive: false });
 
+    // Emit realtime updates
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('stats_changed');
+      io.emit('teachers_changed', { teacherId: req.params.id, action: 'deactivated' });
+    }
+
     res.json({
       success: true,
       message: 'Teacher deactivated successfully'
@@ -359,6 +366,9 @@ router.post('/approve-leave/:id', [
       adminName: req.user.name
     });
 
+    // Notify dashboards to refresh
+    io.emit('stats_changed');
+
     res.json({
       success: true,
       message: 'Leave request approved successfully',
@@ -415,6 +425,9 @@ router.post('/reject-leave/:id', [
       adminName: req.user.name,
       reason: adminNotes
     });
+
+    // Notify dashboards to refresh
+    io.emit('stats_changed');
 
     res.json({
       success: true,

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { FaUser, FaCalendarAlt, FaChartBar, FaCog, FaFileAlt, FaUsers } from 'react-icons/fa';
+import { FaUser, FaCalendarAlt, FaChartBar, FaCog, FaFileAlt, FaUsers, FaTable } from 'react-icons/fa';
 import Navbar from '../components/Navbar';
 import TeacherStats from '../components/teacher/TeacherStats';
 import LeaveForm from '../components/teacher/LeaveForm';
 import MyLeaves from '../components/teacher/MyLeaves';
 import SubstitutionRequests from '../components/teacher/SubstitutionRequests';
+import TeacherTimetable from '../components/teacher/TeacherTimetable';
 import TeacherProfile from '../components/teacher/TeacherProfile';
 
 const TeacherDashboard = () => {
@@ -17,6 +18,7 @@ const TeacherDashboard = () => {
 
   const navigation = [
     { name: 'Dashboard', href: '/teacher', icon: FaChartBar },
+    { name: 'My Timetable', href: '/teacher/timetable', icon: FaTable },
     { name: 'Apply Leave', href: '/teacher/apply-leave', icon: FaCalendarAlt },
     { name: 'My Leaves', href: '/teacher/my-leaves', icon: FaFileAlt },
     { name: 'Substitution Requests', href: '/teacher/substitutions', icon: FaUsers },
@@ -117,6 +119,7 @@ const TeacherDashboard = () => {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <Routes>
               <Route path="/" element={<TeacherStats />} />
+              <Route path="/timetable" element={<TeacherTimetable />} />
               <Route path="/apply-leave" element={<LeaveForm />} />
               <Route path="/my-leaves" element={<MyLeaves />} />
               <Route path="/substitutions" element={<SubstitutionRequests />} />

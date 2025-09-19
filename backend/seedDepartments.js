@@ -50,78 +50,164 @@ const sampleDepartments = [
   }
 ];
 
-// Sample class data
+// Sample class data with sections
 const sampleClasses = [
+  // CSE Classes
   {
-    name: 'CSE 3rd Year',
+    name: 'CSE-1A',
     department: null, // Will be set after department creation
     academicYear: '2024-25',
-    semester: 5,
-    strength: 45,
+    semester: 1,
+    strength: 60,
+    section: 'A',
     timetable: []
   },
   {
-    name: 'CSE 4th Year',
+    name: 'CSE-1B',
+    department: null,
+    academicYear: '2024-25',
+    semester: 1,
+    strength: 58,
+    section: 'B',
+    timetable: []
+  },
+  {
+    name: 'CSE-2A',
+    department: null,
+    academicYear: '2024-25',
+    semester: 3,
+    strength: 55,
+    section: 'A',
+    timetable: []
+  },
+  {
+    name: 'CSE-3A',
+    department: null,
+    academicYear: '2024-25',
+    semester: 5,
+    strength: 52,
+    section: 'A',
+    timetable: []
+  },
+  {
+    name: 'CSE-4A',
     department: null,
     academicYear: '2024-25',
     semester: 7,
-    strength: 42,
+    strength: 48,
+    section: 'A',
+    timetable: []
+  },
+  // AIML Classes
+  {
+    name: 'AIML-1A',
+    department: null,
+    academicYear: '2024-25',
+    semester: 1,
+    strength: 45,
+    section: 'A',
     timetable: []
   },
   {
-    name: 'ECE 2nd Year',
+    name: 'AIML-2A',
+    department: null,
+    academicYear: '2024-25',
+    semester: 3,
+    strength: 42,
+    section: 'A',
+    timetable: []
+  },
+  {
+    name: 'AIML-3A',
+    department: null,
+    academicYear: '2024-25',
+    semester: 5,
+    strength: 40,
+    section: 'A',
+    timetable: []
+  },
+  // IT Classes
+  {
+    name: 'IT-1A',
+    department: null,
+    academicYear: '2024-25',
+    semester: 1,
+    strength: 50,
+    section: 'A',
+    timetable: []
+  },
+  {
+    name: 'IT-2A',
     department: null,
     academicYear: '2024-25',
     semester: 3,
     strength: 48,
+    section: 'A',
     timetable: []
   },
   {
-    name: 'ECE 3rd Year',
+    name: 'IT-3A',
     department: null,
     academicYear: '2024-25',
     semester: 5,
-    strength: 46,
+    strength: 45,
+    section: 'A',
+    timetable: []
+  },
+  // ECE Classes
+  {
+    name: 'ECE-1A',
+    department: null,
+    academicYear: '2024-25',
+    semester: 1,
+    strength: 55,
+    section: 'A',
     timetable: []
   },
   {
-    name: 'MECH 2nd Year',
+    name: 'ECE-2A',
     department: null,
     academicYear: '2024-25',
     semester: 3,
-    strength: 44,
+    strength: 52,
+    section: 'A',
     timetable: []
   },
   {
-    name: 'AIML 2nd Year',
-    department: null,
-    academicYear: '2024-25',
-    semester: 3,
-    strength: 40,
-    timetable: []
-  },
-  {
-    name: 'AIML 3rd Year',
+    name: 'ECE-3A',
     department: null,
     academicYear: '2024-25',
     semester: 5,
-    strength: 38,
+    strength: 50,
+    section: 'A',
+    timetable: []
+  },
+  // MECH Classes
+  {
+    name: 'MECH-1A',
+    department: null,
+    academicYear: '2024-25',
+    semester: 1,
+    strength: 60,
+    section: 'A',
     timetable: []
   },
   {
-    name: 'AIDS 2nd Year',
+    name: 'MECH-2A',
     department: null,
     academicYear: '2024-25',
     semester: 3,
-    strength: 42,
+    strength: 58,
+    section: 'A',
     timetable: []
   },
   {
-    name: 'AIDS 3rd Year',
+    name: 'MECH-3A',
     department: null,
     academicYear: '2024-25',
     semester: 5,
-    strength: 40,
+    strength: 55,
+    section: 'A',
     timetable: []
   }
 ];
@@ -177,13 +263,35 @@ const seedDepartmentsAndClasses = async () => {
       }
     }
 
-    // Create classes
-    for (let i = 0; i < sampleClasses.length; i++) {
-      const classData = new Class({
-        ...sampleClasses[i],
-        department: departments[i % departments.length]._id
-      });
-      await classData.save();
+    // Create classes and assign to appropriate departments
+    for (const classData of sampleClasses) {
+      let departmentId = null;
+      
+      // Find the appropriate department based on class name
+      if (classData.name.startsWith('CSE')) {
+        departmentId = departments.find(d => d.code === 'CSE')?._id;
+      } else if (classData.name.startsWith('AIML')) {
+        departmentId = departments.find(d => d.code === 'AIML')?._id;
+      } else if (classData.name.startsWith('IT')) {
+        departmentId = departments.find(d => d.code === 'IT')?._id;
+      } else if (classData.name.startsWith('ECE')) {
+        departmentId = departments.find(d => d.code === 'ECE')?._id;
+      } else if (classData.name.startsWith('MECH')) {
+        departmentId = departments.find(d => d.code === 'MECH')?._id;
+      } else if (classData.name.startsWith('CIVIL')) {
+        departmentId = departments.find(d => d.code === 'CIVIL')?._id;
+      } else if (classData.name.startsWith('AIDS')) {
+        departmentId = departments.find(d => d.code === 'AIDS')?._id;
+      }
+      
+      if (departmentId) {
+        const newClass = new Class({
+          ...classData,
+          department: departmentId
+        });
+        await newClass.save();
+        console.log(`Created class: ${classData.name} in department: ${departments.find(d => d._id.toString() === departmentId.toString())?.name}`);
+      }
     }
     console.log(`Created ${sampleClasses.length} classes`);
 

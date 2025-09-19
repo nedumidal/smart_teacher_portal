@@ -5,6 +5,7 @@ const Timetable = require('../models/Timetable');
 const Substitution = require('../models/Substitution');
 const Teacher = require('../models/Teacher');
 const substitutionRecommender = require('../utils/substitutionRecommender');
+const Class = require('../models/Class');
 
 // Get teacher's timetable
 router.get('/teacher/:teacherId', protect, async (req, res) => {
@@ -161,7 +162,7 @@ router.get('/availability/:day/:periodNumber', protect, async (req, res) => {
 // Get substitution recommendations
 router.get('/substitution-recommendations', protect, async (req, res) => {
   try {
-    const { subject, day, periodNumber, date, excludeTeacherId } = req.query;
+    let { subject, day, periodNumber, date, excludeTeacherId } = req.query;
 
     if (!subject || !day || !periodNumber || !date) {
       return res.status(400).json({
@@ -170,12 +171,28 @@ router.get('/substitution-recommendations', protect, async (req, res) => {
       });
     }
 
+    // Normalize inputs
+    const validDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const normalizedDay = String(day).toLowerCase();
+    const parsedPeriod = parseInt(periodNumber, 10);
+    const parsedDate = new Date(date);
+
+    if (!validDays.includes(normalizedDay)) {
+      return res.status(400).json({ success: false, message: 'Invalid day' });
+    }
+    if (Number.isNaN(parsedPeriod) || parsedPeriod < 1 || parsedPeriod > 7) {
+      return res.status(400).json({ success: false, message: 'Invalid period number' });
+    }
+    if (isNaN(parsedDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid date' });
+    }
+
     const recommendations = await substitutionRecommender.getRecommendedSubstitutes(
       subject,
-      day,
-      parseInt(periodNumber),
-      new Date(date),
-      excludeTeacherId
+      normalizedDay,
+      parsedPeriod,
+      parsedDate,
+      excludeTeacherId || null
     );
 
     res.json({
@@ -209,6 +226,7 @@ router.post('/assign-substitution', protect, async (req, res) => {
       periodNumber,
       subject,
       className,
+      classId,
       date,
       notes
     } = req.body;
@@ -231,6 +249,19 @@ router.post('/assign-substitution', protect, async (req, res) => {
         success: false,
         message: 'All fields are required'
       });
+    }
+
+    // Resolve classId if not provided by looking up by className
+    let resolvedClassId = classId;
+    if (!resolvedClassId) {
+      const classDoc = await Class.findOne({ name: className });
+      if (!classDoc) {
+        return res.status(404).json({
+          success: false,
+          message: 'Class not found with the provided name'
+        });
+      }
+      resolvedClassId = classDoc._id;
     }
 
     // Check if substitute teacher is available
@@ -269,6 +300,7 @@ router.post('/assign-substitution', protect, async (req, res) => {
       day,
       periodNumber,
       subject,
+      classId: resolvedClassId,
       className,
       assignedBy: req.user._id,
       status: 'requested',
@@ -280,6 +312,13 @@ router.post('/assign-substitution', protect, async (req, res) => {
     await substitution.save();
 
     console.log('Substitution saved successfully:', substitution._id);
+    console.log('Substitution details:', {
+      id: substitution._id,
+      substituteTeacherId: substitution.substituteTeacherId,
+      originalTeacherId: substitution.originalTeacherId,
+      status: substitution.status,
+      className: substitution.className
+    });
 
     // Update the leave with the substitution reference
     const Leave = require('../models/Leave');
@@ -294,11 +333,37 @@ router.post('/assign-substitution', protect, async (req, res) => {
       data: substitution,
       message: 'Substitution request sent to teacher'
     });
+
+    // Notify dashboards to refresh
+    const io = req.app.get('io');
+    if (io) {
+      io.emit('stats_changed');
+    }
   } catch (error) {
     console.error('Error assigning substitution:', error);
+    
+    // Handle specific validation errors
+    if (error.name === 'ValidationError') {
+      const errors = Object.values(error.errors).map(err => err.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        errors: errors
+      });
+    }
+    
+    // Handle duplicate key errors
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: 'A substitution already exists for this combination'
+      });
+    }
+    
     res.status(500).json({
       success: false,
-      message: 'Error assigning substitution'
+      message: 'Error assigning substitution',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 });
@@ -337,7 +402,27 @@ router.patch('/substitutions/:substitutionId/accept', protect, async (req, res) 
     substitution.acceptedAt = new Date();
     await substitution.save();
 
-    // Update teacher's timetable to show substitution
+    // Update teacher's assigned periods to include the substitution
+    await Teacher.findByIdAndUpdate(
+      substitution.substituteTeacherId,
+      {
+        $push: {
+          assignedPeriods: {
+            classId: substitution.classId,
+            className: substitution.className,
+            day: substitution.day,
+            periodNumber: substitution.periodNumber,
+            subject: substitution.subject,
+            room: '', // Default empty room for substitution
+            isSubstitution: true,
+            originalTeacherId: substitution.originalTeacherId,
+            substitutionDate: new Date()
+          }
+        }
+      }
+    );
+
+    // Also update the Timetable model for consistency
     const teacherTimetable = await Timetable.findOne({
       teacherId: substitution.substituteTeacherId,
       day: substitution.day
@@ -519,9 +604,14 @@ router.get('/substitutions/teacher/:teacherId', protect, async (req, res) => {
         id: sub._id,
         substituteTeacherId: sub.substituteTeacherId,
         substituteTeacherIdType: typeof sub.substituteTeacherId,
+        substituteTeacherIdString: sub.substituteTeacherId?.toString(),
         originalTeacherId: sub.originalTeacherId,
         originalTeacherIdType: typeof sub.originalTeacherId,
-        status: sub.status
+        originalTeacherIdString: sub.originalTeacherId?.toString(),
+        status: sub.status,
+        requestedTeacherId: teacherId,
+        requestedTeacherIdType: typeof teacherId,
+        requestedTeacherIdString: teacherId.toString()
       });
     });
 

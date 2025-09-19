@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { FaCalendarAlt, FaClock, FaUserGraduate, FaExchangeAlt, FaCheckCircle, FaTimesCircle, FaTable } from 'react-icons/fa';
 import { useAuth } from '../../contexts/AuthContext';
+import { useSocket } from '../../contexts/SocketContext';
 
 const TeacherStats = () => {
   const [stats, setStats] = useState({});
@@ -11,11 +12,29 @@ const TeacherStats = () => {
   const [loading, setLoading] = useState(true);
   const { user } = useAuth();
   const teacherId = user?._id;
+  const { on, off } = useSocket();
 
   useEffect(() => {
     if (teacherId) {
       fetchTeacherData();
     }
+  }, [teacherId]);
+
+  // realtime refresh when relevant events arrive
+  useEffect(() => {
+    const handler = () => fetchTeacherData();
+    on('stats_changed', handler);
+    on('substitution_request', handler);
+    on('substitution_accepted', handler);
+    on('leave_approved', handler);
+    on('leave_rejected', handler);
+    return () => {
+      off('stats_changed', handler);
+      off('substitution_request', handler);
+      off('substitution_accepted', handler);
+      off('leave_approved', handler);
+      off('leave_rejected', handler);
+    };
   }, [teacherId]);
 
   const fetchTeacherData = async () => {

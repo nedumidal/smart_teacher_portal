@@ -77,7 +77,41 @@ const teacherSchema = new mongoose.Schema({
     default: 100,
     min: [0, 'Attendance percentage cannot be negative'],
     max: [100, 'Attendance percentage cannot exceed 100']
-  }
+  },
+  assignedPeriods: [{
+    classId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Class'
+    },
+    day: {
+      type: String,
+      enum: ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+    },
+    periodNumber: {
+      type: Number,
+      min: 1,
+      max: 7
+    },
+    subject: {
+      type: String,
+      trim: true
+    },
+    room: {
+      type: String,
+      trim: true
+    },
+    isSubstitution: {
+      type: Boolean,
+      default: false
+    },
+    originalTeacherId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Teacher'
+    },
+    substitutionDate: {
+      type: Date
+    }
+  }]
 }, {
   timestamps: true
 });

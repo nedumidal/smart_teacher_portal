@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { FaUsers, FaCalendarAlt, FaChartBar, FaCog, FaExchangeAlt, FaBuilding, FaTable } from 'react-icons/fa';
+import { FaUsers, FaCalendarAlt, FaChartBar, FaCog, FaExchangeAlt, FaBuilding, FaTable, FaMagic } from 'react-icons/fa';
 import Navbar from '../components/Navbar';
 import AdminStats from '../components/admin/AdminStats';
 import ManageTeachers from '../components/admin/ManageTeachers';
 import ManageLeaves from '../components/admin/ManageLeaves';
 import ManageSubstitutions from '../components/admin/ManageSubstitutions';
 import DepartmentManagement from '../components/admin/DepartmentManagement';
-import ClassTimetableManagement from '../components/admin/ClassTimetableManagement';
+import ClassTimetableManager from '../components/admin/ClassTimetableManager';
+import TimetableGenerator from '../components/admin/TimetableGenerator';
 import AdminProfile from '../components/admin/AdminProfile';
 
 const AdminDashboard = () => {
@@ -24,6 +25,7 @@ const AdminDashboard = () => {
     { name: 'Manage Substitutions', href: '/admin/substitutions', icon: FaExchangeAlt },
     { name: 'Department Management', href: '/admin/departments', icon: FaBuilding },
     { name: 'Class Timetables', href: '/admin/classes', icon: FaTable },
+    { name: 'Timetable Generator', href: '/admin/generator', icon: FaMagic },
     { name: 'Profile', href: '/admin/profile', icon: FaCog },
   ];
 
@@ -125,7 +127,8 @@ const AdminDashboard = () => {
               <Route path="/leaves" element={<ManageLeaves />} />
               <Route path="/substitutions" element={<ManageSubstitutions />} />
               <Route path="/departments" element={<DepartmentManagement />} />
-              <Route path="/classes" element={<ClassTimetableManagement />} />
+              <Route path="/classes" element={<ClassTimetableManager />} />
+              <Route path="/generator" element={<TimetableGenerator />} />
               <Route path="/profile" element={<AdminProfile />} />
             </Routes>
           </div>

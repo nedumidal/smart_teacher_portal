@@ -11,7 +11,8 @@
     "lint": "echo 'Linting not configured yet'",
     "seed": "node seed.js",
     "seed:departments": "node seedDepartments.js",
-    "seed:timetable": "node seedTimetable.js"
+    "seed:timetable": "node seedTimetable.js",
+    "seed:teachers:reset": "node seedTeachersReset.js"
   },
   "keywords": [
     "hospital",

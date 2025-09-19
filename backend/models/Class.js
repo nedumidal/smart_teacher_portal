@@ -8,20 +8,25 @@ const classSchema = new mongoose.Schema({
     maxlength: [50, 'Class name cannot exceed 50 characters']
   },
   department: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Department',
-    required: [true, 'Department is required']
-  },
-  academicYear: {
     type: String,
-    required: [true, 'Academic year is required'],
-    trim: true
+    required: [true, 'Department is required'],
+    enum: ['CSE', 'AIML', 'IT', 'ECE', 'MECH', 'CIVIL', 'EEE', 'DS', 'CS', 'MBA', 'MATH', 'PHY', 'CHEM', 'ENG']
+  },
+  section: {
+    type: String,
+    required: [true, 'Section is required'],
+    enum: ['A', 'B', 'C', 'D', 'E', 'F']
   },
   semester: {
     type: Number,
     required: [true, 'Semester is required'],
     min: [1, 'Semester must be at least 1'],
     max: [8, 'Semester cannot exceed 8']
+  },
+  graduationYear: {
+    type: String,
+    required: [true, 'Graduation year is required'],
+    trim: true
   },
   strength: {
     type: Number,
@@ -65,6 +70,10 @@ const classSchema = new mongoose.Schema({
       },
       substitutionDate: {
         type: Date
+      },
+      substitutionId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Substitution'
       }
     }]
   }],
@@ -77,7 +86,7 @@ const classSchema = new mongoose.Schema({
 });
 
 // Index for efficient queries
-classSchema.index({ department: 1, academicYear: 1, semester: 1 });
+classSchema.index({ department: 1, section: 1, semester: 1 });
 classSchema.index({ name: 1, department: 1 });
 classSchema.index({ isActive: 1 });
 

@@ -31,6 +31,11 @@ const substitutionSchema = new mongoose.Schema({
     type: String,
     required: [true, 'Subject is required']
   },
+  classId: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Class',
+    required: [true, 'Class ID is required']
+  },
   className: {
     type: String,
     required: [true, 'Class is required']
@@ -43,7 +48,7 @@ const substitutionSchema = new mongoose.Schema({
   assignedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Teacher',
-    required: [true, 'Admin who assigned the substitution is required']
+    required: false
   },
   assignedAt: {
     type: Date,

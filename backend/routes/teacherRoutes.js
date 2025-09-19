@@ -479,4 +479,67 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+// @desc    Get teacher timetable
+// @route   GET /api/teachers/:id/timetable
+// @access  Private (Teachers only - can get own timetable)
+router.get('/:id/timetable', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Teachers can only get their own timetable
+    if (id !== req.user._id.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only access your own timetable'
+      });
+    }
+
+    const teacher = await Teacher.findById(id).select('assignedPeriods');
+    
+    if (!teacher) {
+      return res.status(404).json({
+        success: false,
+        message: 'Teacher not found'
+      });
+    }
+
+    // Convert assigned periods to timetable format
+    const timetable = [];
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    
+    days.forEach(day => {
+      const dayPeriods = teacher.assignedPeriods
+        .filter(period => period.day === day)
+        .map(period => ({
+          periodNumber: period.periodNumber,
+          subject: period.subject,
+          className: period.classId?.name || 'Unknown Class',
+          room: period.room,
+          isSubstitution: period.isSubstitution,
+          originalTeacherId: period.originalTeacherId
+        }))
+        .sort((a, b) => a.periodNumber - b.periodNumber);
+
+      if (dayPeriods.length > 0) {
+        timetable.push({
+          day,
+          periods: dayPeriods
+        });
+      }
+    });
+
+    res.json({
+      success: true,
+      data: timetable
+    });
+  } catch (error) {
+    console.error('Get teacher timetable error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Server error while fetching teacher timetable',
+      error: process.env.NODE_ENV === 'development' ? error.message : {}
+    });
+  }
+});
+
 module.exports = router;

@@ -13,6 +13,7 @@ const ManageSubstitutions = () => {
   const [className, setClassName] = useState('');
   const [showAddForm, setShowAddForm] = useState(false);
   const [editingSubstitution, setEditingSubstitution] = useState(null);
+  const [teacherDayPeriods, setTeacherDayPeriods] = useState([]);
 
   const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
   const periods = [1, 2, 3, 4, 5, 6, 7];
@@ -21,6 +22,131 @@ const ManageSubstitutions = () => {
     fetchApprovedLeaves();
     fetchSubstitutions();
   }, []);
+
+  // Helper to convert date to weekday string used by backend (lowercase)
+  const getWeekdayString = (dateStr) => {
+    try {
+      const d = new Date(dateStr);
+      const dayIdx = d.getDay(); // 0=Sun
+      const map = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+      return map[dayIdx] || 'monday';
+    } catch (e) {
+      return 'monday';
+    }
+  };
+
+  // When a leave is selected, auto-set day from leave date and fetch teacher timetable for that day
+  useEffect(() => {
+    const initFromLeave = async () => {
+      if (!selectedLeave) return;
+
+      const leaveDay = getWeekdayString(selectedLeave.date);
+      // If Sunday, default to Monday (no classes expected on Sunday)
+      const normalizedDay = leaveDay === 'sunday' ? 'monday' : leaveDay;
+      setSelectedDay(normalizedDay);
+
+      try {
+        // First try to get teacher's assigned periods from their profile
+        const teacherRes = await axios.get(`/api/teachers/${selectedLeave.teacherId}`, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        });
+
+        if (teacherRes.data && teacherRes.data.success) {
+          const teacher = teacherRes.data.data;
+          const assignedPeriods = teacher.assignedPeriods || [];
+          
+          // Find periods for the leave day
+          const dayPeriods = assignedPeriods.filter(p => p.day === normalizedDay);
+          
+          if (dayPeriods.length > 0) {
+            setTeacherDayPeriods(dayPeriods);
+            
+            // Prefer a period matching the leave subject, otherwise first period
+            const match = dayPeriods.find(p => (p.subject || '').toLowerCase() === (selectedLeave.subject || '').toLowerCase());
+            const chosen = match || dayPeriods[0];
+            setSelectedPeriod(chosen.periodNumber);
+            
+            // Get class name from the assigned period
+            if (chosen.classId && chosen.classId.name) {
+              setClassName(chosen.classId.name);
+            } else if (chosen.className) {
+              setClassName(chosen.className);
+            } else {
+              // Fallback: find class by scanning classes timetable
+              try {
+                const classesRes = await axios.get('/api/classes', {
+                  headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                });
+                const classes = (classesRes.data && classesRes.data.data) || [];
+                let foundName = '';
+                
+                // Try to find class by teacher and period
+                for (const c of classes) {
+                  if (!Array.isArray(c.timetable)) continue;
+                  const dayEntry = c.timetable.find(d => d.day === normalizedDay);
+                  if (!dayEntry || !Array.isArray(dayEntry.periods)) continue;
+                  const hit = dayEntry.periods.find(per => 
+                    per.periodNumber === chosen.periodNumber && 
+                    (per.teacherId === selectedLeave.teacherId || (per.teacherId && per.teacherId._id === selectedLeave.teacherId))
+                  );
+                  if (hit) {
+                    foundName = c.name;
+                    break;
+                  }
+                }
+                
+                // If still not found, try to find by subject match
+                if (!foundName) {
+                  for (const c of classes) {
+                    if (!Array.isArray(c.timetable)) continue;
+                    const dayEntry = c.timetable.find(d => d.day === normalizedDay);
+                    if (!dayEntry || !Array.isArray(dayEntry.periods)) continue;
+                    const hit = dayEntry.periods.find(per => 
+                      per.periodNumber === chosen.periodNumber && 
+                      per.subject && chosen.subject &&
+                      per.subject.toLowerCase().includes(chosen.subject.toLowerCase())
+                    );
+                    if (hit) {
+                      foundName = c.name;
+                      break;
+                    }
+                  }
+                }
+                
+                setClassName(foundName);
+              } catch (e) {
+                console.error('Error resolving class name from classes list:', e);
+                setClassName('');
+              }
+            }
+          } else {
+            // No periods on that day; clear fields so user can choose
+            setClassName('');
+            setTeacherDayPeriods([]);
+          }
+        }
+      } catch (err) {
+        console.error('Error loading teacher data for leave day:', err);
+        setClassName('');
+        setTeacherDayPeriods([]);
+      }
+    };
+
+    initFromLeave();
+  }, [selectedLeave]);
+
+  // When period changes, update class name from cached timetable periods if available
+  useEffect(() => {
+    if (!teacherDayPeriods || teacherDayPeriods.length === 0) return;
+    const period = teacherDayPeriods.find(p => p.periodNumber === selectedPeriod);
+    if (period) {
+      if (period.classId && period.classId.name) {
+        setClassName(period.classId.name);
+      } else if (period.className) {
+        setClassName(period.className);
+      }
+    }
+  }, [selectedPeriod, teacherDayPeriods]);
 
   const fetchApprovedLeaves = async () => {
     try {
@@ -38,7 +164,7 @@ const ManageSubstitutions = () => {
 
   const fetchSubstitutions = async () => {
     try {
-      const response = await axios.get('/api/timetable/substitutions/all', {
+      const response = await axios.get('/api/substitutions', {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       
@@ -87,6 +213,19 @@ const ManageSubstitutions = () => {
     }
 
     try {
+      // Resolve classId from className to satisfy backend validation
+      const classesRes = await axios.get('/api/classes', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      const classes = (classesRes.data && classesRes.data.data) || [];
+      const inputName = className.trim();
+      const classDoc = classes.find(c => (c.name || '').toLowerCase() === inputName.toLowerCase());
+
+      if (!classDoc) {
+        alert('Class not found. Please enter a valid class name.');
+        return;
+      }
+
       console.log('Assigning substitution with data:', {
         leaveId: selectedLeave._id,
         originalTeacherId: selectedLeave.teacherId,
@@ -94,7 +233,8 @@ const ManageSubstitutions = () => {
         day: selectedDay,
         periodNumber: selectedPeriod,
         subject: selectedLeave.subject || 'General',
-        className: className.trim(),
+        className: classDoc.name,
+        classId: classDoc._id,
         date: selectedLeave.date,
         notes: `Substitution request for ${selectedLeave.teacherName} on ${new Date(selectedLeave.date).toLocaleDateString()}`
       });
@@ -106,7 +246,8 @@ const ManageSubstitutions = () => {
         day: selectedDay,
         periodNumber: selectedPeriod,
         subject: selectedLeave.subject || 'General',
-        className: className.trim(),
+        className: classDoc.name,
+        classId: classDoc._id,
         date: selectedLeave.date,
         notes: `Substitution request for ${selectedLeave.teacherName} on ${new Date(selectedLeave.date).toLocaleDateString()}`
       }, {
@@ -139,7 +280,7 @@ const ManageSubstitutions = () => {
 
   const updateSubstitutionStatus = async (substitutionId, status, rejectionReason = '') => {
     try {
-      const response = await axios.patch(`/api/timetable/substitutions/${substitutionId}`, {
+      const response = await axios.patch(`/api/substitutions/${substitutionId}`, {
         status,
         rejectionReason
       }, {
@@ -162,8 +303,7 @@ const ManageSubstitutions = () => {
     }
 
     try {
-      // Note: You'll need to add a DELETE route in the backend
-      const response = await axios.delete(`/api/timetable/substitutions/${substitutionId}`, {
+      const response = await axios.delete(`/api/substitutions/${substitutionId}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
 
@@ -275,7 +415,8 @@ const ManageSubstitutions = () => {
                 onChange={(e) => setSelectedPeriod(parseInt(e.target.value))}
                 className="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
               >
-                {periods.map(period => (
+                {(teacherDayPeriods.length > 0 ? teacherDayPeriods.map(p => p.periodNumber) : periods)
+                  .map(period => (
                   <option key={period} value={period}>
                     Period {period}
                   </option>

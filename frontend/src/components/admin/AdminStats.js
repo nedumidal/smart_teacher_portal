@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { useSocket } from '../../contexts/SocketContext';
 
 const AdminStats = () => {
   const [stats, setStats] = useState({
@@ -12,9 +13,17 @@ const AdminStats = () => {
     totalSubstitutions: 0
   });
   const [loading, setLoading] = useState(true);
+  const { on, off } = useSocket();
 
   useEffect(() => {
     fetchStats();
+    const handler = () => fetchStats();
+    on('stats_changed', handler);
+    on('teachers_changed', handler);
+    return () => {
+      off('stats_changed', handler);
+      off('teachers_changed', handler);
+    };
   }, []);
 
   const fetchStats = async () => {

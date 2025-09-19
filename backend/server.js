@@ -103,6 +103,7 @@ const initializeServer = async () => {
     app.use('/api/timetable', require('./routes/timetableRoutes'));
     app.use('/api/departments', require('./routes/departmentRoutes'));
     app.use('/api/classes', require('./routes/classRoutes'));
+    app.use('/api/substitutions', require('./routes/substitutionRoutes'));
 
     // Health check endpoint
     app.get('/api/health', (req, res) => {
